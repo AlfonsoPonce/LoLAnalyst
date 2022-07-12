@@ -51,63 +51,11 @@ class Data_Analytics:
         return duracion_partida_media, duracion_partida_desviacion
 
 
-    #Por mejorar
-    def histograma(self, condicion):
-        """Muestra por pantalla el histograma de las opciones que se le pasen
-
-        Args:
-            condicion(str): variable de la que se quiere ver el histograma
-        """
-        opciones = ['duracion_partida']
-        assert condicion in opciones, 'No existe esa opcion, opciones disponibles: ' + opciones
-        self.file.hist(column='gameDuration')
-
-        plt.show()
 
 
-    def qqPlot(self):
-        sm.qqplot(duracion_partida,line='s')  # Si pongo '45' me muestra la línea de acuerdo a una muestra estandarizada
-        plt.show()
 
 
-    def spellsData(self, opciones):
-        """
-        Análisis sobre los spells usados
 
-        Args:
-            opciones: Qué información se quiere obtener de los spells
-        :return:
-        """
-        if opciones == 'max':
-            spells = pd.DataFrame()
-            for i in range(2):
-                for j in range(5):
-                    # cad = cad+'\'t'+str(i+1)+'_champ'+str(j+1)+'_sum'+str(i+1)+'\''+','
-                    spells = spells.append(self.file['t' + str(i + 1) + '_champ' + str(j + 1) + '_sum' + str(i + 1)])
-            spells = spells.transpose()
-
-            spell = []
-            count = []
-
-            for i in range(2):
-                for j in range(5):
-                    champ_sum = 't' + str(i + 1) + '_champ' + str(j + 1) + '_sum' + str(i + 1)
-                    sums = spells.groupby(champ_sum).size().reset_index(name='cuenta')
-                    sums = sums.to_numpy()
-                    c = sums[np.argmax(np.max(sums, axis=1)), :]
-                    spell.append(c[0])
-                    count.append(c[1])
-            max_sum_count = np.argmax(count)
-            max_sum_id = spell[max_sum_count]
-            max_sum_name = ''
-            total_max_sum_count = 0
-            for i in range(len(count)):
-                if spell[i] == max_sum_id:
-                    total_max_sum_count = total_max_sum_count + count[i]
-
-            with open('./summoner_spell_info.json', 'r') as f:
-                data = json.load(f)
-                max_sum_name = data['data'][str(max_sum_id)]['name']
 
     def winnerProportion(self):
         """
@@ -123,5 +71,171 @@ class Data_Analytics:
         porcentaje_rojo = 1 - porcentaje_azul
 
         return porcentaje_azul, porcentaje_rojo
+
+
+    def monsterImpact(self, opciones):
+        if opciones == 'split':
+            self.splitImpact('riftHerald')
+        elif opciones == 'all':
+            self.allImpact()
+
+
+
+    def splitImpact(self, opcion):
+        assert opcion in ['baron', 'dragon', 'riftHerald']
+
+        stats = self.file[['t1_'+opcion+'Kills', 't2_'+opcion+'Kills', 'winner']]
+
+        difference = stats['t1_'+opcion+'Kills'] - stats['t2_'+opcion+'Kills']
+
+        new_stats = pd.DataFrame()
+        new_stats['difference'] = difference
+        new_stats['winner'] = stats['winner']
+        #Si difference[i] > 0 entonces se ha hecho más barons el equipo azul
+
+        blue_team_n = new_stats[new_stats['difference'] > 0]
+        red_team_n = new_stats[new_stats['difference'] < 0]
+        neutral_n = new_stats[new_stats['difference'] == 0]
+
+        porcentajes = [len(blue_team_n) / self.numPartidasRegistradas()*100, len(red_team_n) / self.numPartidasRegistradas()*100,
+                       len(neutral_n) / self.numPartidasRegistradas()*100]
+
+        print("En " + str(len(blue_team_n)) + " el equipo azul se ha hecho más "+opcion+"s.")
+        print("En " + str(len(red_team_n))  + " el equipo rojo se ha hecho más "+opcion+"s.")
+        print("En " + str(len(neutral_n))   + " ambos equipos hicieron los mismos "+opcion+"s.")
+
+        labels = ['blue', 'red', 'neutral']
+
+        fig1, ax1 = plt.subplots()
+        ax1.pie(porcentajes, labels=labels, autopct='%1.1f%%',
+                shadow=True, startangle=90)
+        ax1.axis('equal')  # Equal aspect ratio ensures that pie is drawn as a circle.
+
+        plt.show()
+
+        labels2 = [opcion+'_blue_Win_blue', opcion+'_blue_Win_red', opcion+'_red_Win_blue', opcion+'_red_Win_red',
+                   opcion+'_neutral_Win_blue', opcion+'_neutral_Win_red']
+
+        blue_team_n_wb = blue_team_n[blue_team_n['winner'] == 1]
+        blue_team_n_wr = blue_team_n[blue_team_n['winner'] == 2]
+
+        red_team_n_wb = red_team_n[red_team_n['winner'] == 1]
+        red_team_n_wr = red_team_n[red_team_n['winner'] == 2]
+
+        neutral_team_n_wb = neutral_n[neutral_n['winner'] == 1]
+        neutral_team_n_wr = neutral_n[neutral_n['winner'] == 2]
+
+        porcentajes2 = [len(blue_team_n_wb) / self.numPartidasRegistradas() * 100, len(blue_team_n_wr) / self.numPartidasRegistradas() * 100,
+                        len(red_team_n_wb) / self.numPartidasRegistradas() * 100, len(red_team_n_wr) / self.numPartidasRegistradas() * 100,
+                        len(neutral_team_n_wb) / self.numPartidasRegistradas() * 100, len(neutral_team_n_wr) / self.numPartidasRegistradas() * 100]
+
+        fig2, ax2 = plt.subplots()
+        ax2.pie(porcentajes2, labels=labels2, autopct='%1.1f%%',
+                shadow=True, startangle=90)
+        ax2.axis('equal')  # Equal aspect ratio ensures that pie is drawn as a circle.
+
+        plt.show()
+
+    def allImpact(self):
+        stats = pd.DataFrame()
+        stats['t1_monsterKills'] = self.file['t1_baronKills']+ self.file['t1_dragonKills']+self.file['t1_riftHeraldKills']
+        stats['t2_monsterKills'] = self.file['t2_baronKills'] +self.file['t2_dragonKills']+self.file['t2_riftHeraldKills']
+
+        stats['winner'] = self.file['winner']
+
+        difference = stats['t1_monsterKills'] - stats['t2_monsterKills']
+
+        new_stats = pd.DataFrame()
+        new_stats['difference'] = difference
+        new_stats['winner'] = stats['winner']
+        # Si difference[i] > 0 entonces se ha hecho más barons el equipo azul
+
+        blue_team_n = new_stats[new_stats['difference'] > 0]
+        red_team_n = new_stats[new_stats['difference'] < 0]
+        neutral_n = new_stats[new_stats['difference'] == 0]
+
+        porcentajes = [len(blue_team_n) / self.numPartidasRegistradas() * 100,
+                       len(red_team_n) / self.numPartidasRegistradas() * 100,
+                       len(neutral_n) / self.numPartidasRegistradas() * 100]
+
+        print("En " + str(len(blue_team_n)) + " el equipo azul se ha hecho más monstruos.")
+        print("En " + str(len(red_team_n)) + " el equipo rojo se ha hecho más monstruos.")
+        print("En " + str(len(neutral_n)) + " ambos equipos hicieron los mismos monstruos.")
+
+        labels = ['blue', 'red', 'neutral']
+
+        fig1, ax1 = plt.subplots()
+        ax1.pie(porcentajes, labels=labels, autopct='%1.1f%%',
+                shadow=True, startangle=90)
+        ax1.axis('equal')  # Equal aspect ratio ensures that pie is drawn as a circle.
+
+        plt.show()
+
+        labels2 = ['Monster_blue_Win_blue', 'Monster_blue_Win_red', 'Monster_red_Win_blue',
+                   'Monster_red_Win_red',
+                   'Monster_neutral_Win_blue', 'Monster_neutral_Win_red']
+
+        blue_team_n_wb = blue_team_n[blue_team_n['winner'] == 1]
+        blue_team_n_wr = blue_team_n[blue_team_n['winner'] == 2]
+
+        red_team_n_wb = red_team_n[red_team_n['winner'] == 1]
+        red_team_n_wr = red_team_n[red_team_n['winner'] == 2]
+
+        neutral_team_n_wb = neutral_n[neutral_n['winner'] == 1]
+        neutral_team_n_wr = neutral_n[neutral_n['winner'] == 2]
+
+        porcentajes2 = [len(blue_team_n_wb) / self.numPartidasRegistradas() * 100,
+                        len(blue_team_n_wr) / self.numPartidasRegistradas() * 100,
+                        len(red_team_n_wb) / self.numPartidasRegistradas() * 100,
+                        len(red_team_n_wr) / self.numPartidasRegistradas() * 100,
+                        len(neutral_team_n_wb) / self.numPartidasRegistradas() * 100,
+                        len(neutral_team_n_wr) / self.numPartidasRegistradas() * 100]
+
+        fig2, ax2 = plt.subplots()
+        ax2.pie(porcentajes2, labels=labels2, autopct='%1.1f%%',
+                shadow=True, startangle=90)
+        ax2.axis('equal')  # Equal aspect ratio ensures that pie is drawn as a circle.
+
+        plt.show()
+
+        print(stats)
+
+
+    def champStats(self, opcion):
+        if opcion == 'histogramPlayed':
+            self.histrogramPlayedChamps()
+
+
+    def histrogramPlayedChamps(self):
+        champs = self.file[['t1_champ1id', 't1_champ2id', 't1_champ3id', 't1_champ4id', 't1_champ5id',
+                            't2_champ1id', 't2_champ2id', 't2_champ3id', 't2_champ4id', 't2_champ5id',]]
+
+
+
+        champ_dict = {}
+
+        with open('champion_info.json', 'r') as f:
+            data = json.load(f)
+            for id in data['data']:
+                champ_dict[data['data'][str(id)]['name']] = id
+
+        Z = champs['t1_champ1id']
+        key_list = list(champ_dict.keys())
+        val_list = list(champ_dict.values())
+        x = []
+        for champ in Z:
+            position = val_list.index(str(champ))
+            name = key_list[position]
+            x.append(name)
+        values, counts = np.unique(x, return_counts=True)
+        plt.vlines(values, 0, counts, color='C0', lw=4)
+        plt.xticks(rotation='vertical')
+        plt.ylim(0, max(counts) * 1.06)
+        plt.show()
+
+
+
+
+
 
 
